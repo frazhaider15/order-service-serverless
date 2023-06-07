@@ -1,0 +1,140 @@
+Resources:
+  CreateOrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: order-service/
+      Handler: CreateOrderHandler
+      Runtime: go1.x
+      Events:
+        ApiGatewayEvent:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: OrderApi
+            Path: /create-order
+            Method: POST
+
+  ProcessOrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: order-service/
+      Handler: ProcessOrderHandler
+      Runtime: go1.x
+
+  UpdateStockFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: order-service/
+      Handler: UpdateStockHandler
+      Runtime: go1.x
+
+  GetCustomerOrdersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: order-service/
+      Handler: GetCustomerOrdersHandler
+      Runtime: go1.x
+      Events:
+        ApiGatewayEvent:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: OrderApi
+            Path: /get-customer-orders
+            Method: GET
+
+  OrderApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: dev
+
+  ProductsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: products
+      AttributeDefinitions:
+        - AttributeName: productID
+          AttributeType: N
+      KeySchema:
+        - AttributeName: productID
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: orders
+      AttributeDefinitions:
+        - AttributeName: orderID
+          AttributeType: N
+      KeySchema:
+        - AttributeName: orderID
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  CreateOrderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: CreateOrderFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*/*/*
+
+  ProcessOrderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: ProcessOrderFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn:
+        Fn::Sub: ${MessageTopic}
+
+  UpdateStockPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: UpdateStockFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn:
+        Fn::Sub: ${MessageTopic}
+
+  GetCustomerOrdersPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: GetCustomerOrdersFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*/*/*
+
+  MessageTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: OrderProcessingTopic
+
+  ProcessOrderSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn:
+        Ref: MessageTopic
+      Protocol: lambda
+      Endpoint:
+        Fn::Sub:
+          - "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${FunctionName}"
+          - FunctionName: ProcessOrderFunction
+
+  UpdateStockSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn:
+        Ref: MessageTopic
+      Protocol: lambda
+      Endpoint:
+        Fn::Sub:
+          - "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${FunctionName}"
+          - FunctionName: UpdateStockFunction
